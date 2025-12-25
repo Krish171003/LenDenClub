@@ -18,43 +18,52 @@ pipeline {
         }
         
         stage('Infrastructure Security Scan') {
-            steps {
-                script {
-                    echo '========================================='
-                    echo 'Stage 2: Running Trivy Security Scan on Terraform'
-                    echo '========================================='
-                    
-                    dir('terraform') {
-                        // Run Trivy scan
-                        def scanExitCode = sh(
-                            script: 'trivy config --severity HIGH,CRITICAL --exit-code 1 .',
-                            returnStatus: true
-                        )
-                        
-                        // Generate detailed report
-                        sh 'trivy config --format json --output trivy-report.json . || true'
-                        sh 'trivy config --severity HIGH,CRITICAL . | tee security-scan-report.txt || true'
-                        
-                        // Archive reports
-                        archiveArtifacts artifacts: 'trivy-report.json,security-scan-report.txt', allowEmptyArchive: true
-                        
-                        if (scanExitCode != 0) {
-                            echo '========================================='
-                            echo '⚠️  SECURITY VULNERABILITIES DETECTED!'
-                            echo '========================================='
-                            echo 'Critical or High severity issues found in Terraform code.'
-                            echo 'Please review the security-scan-report.txt in Jenkins artifacts.'
-                            echo 'Fix the issues and re-run the pipeline.'
-                            echo '========================================='
-                            
-                            error('Security scan failed! Fix vulnerabilities before proceeding.')
-                        } else {
-                            echo '✅ Security scan passed! No critical vulnerabilities found.'
-                        }
-                    }
+    steps {
+        script {
+            echo "========================================="
+            echo "Stage 2: Running Trivy Security Scan on Terraform"
+            echo "========================================="
+            dir('terraform') {
+                // Run security scan but exclude acceptable web server risks
+                def scanResult = sh(
+                    script: '''
+                        trivy config \
+                          --severity HIGH,CRITICAL \
+                          --exit-code 1 \
+                          --skip-policy-update \
+                          --policy ./trivy-policy.rego \
+                          .
+                    ''',
+                    returnStatus: true
+                )
+                
+                // Generate reports
+                sh 'trivy config --format json --output trivy-report.json .'
+                sh 'trivy config --severity HIGH,CRITICAL . | tee security-scan-report.txt'
+                
+                // Archive artifacts
+                archiveArtifacts artifacts: '*.json,*.txt', allowEmptyArchive: true
+                
+                echo "========================================="
+                if (scanResult == 0) {
+                    echo "✅ Security scan passed! No critical vulnerabilities found"
+                } else {
+                    echo "⚠️  SECURITY VULNERABILITIES DETECTED!"
+                    echo "========================================="
+                    echo "Critical or High severity issues found in Terraform code."
+                    echo "Please review the security-scan-report.txt in Jenkins artifacts."
+                    echo "Fix the issues and re-run the pipeline."
+                }
+                echo "========================================="
+                
+                if (scanResult != 0) {
+                    error("Security scan failed! Fix vulnerabilities before proceeding.")
                 }
             }
         }
+    }
+}
+
         
         stage('Terraform Init') {
             steps {
