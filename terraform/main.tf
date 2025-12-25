@@ -130,6 +130,8 @@ resource "aws_instance" "app_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
   subnet_id     = aws_subnet.public.id
+
+  key_name      = "lendenclub-key"
   
   vpc_security_group_ids = [aws_security_group.app_sg.id]
   
