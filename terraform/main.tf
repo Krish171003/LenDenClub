@@ -8,18 +8,18 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
-
+  
   tags = {
-    Name = "`${var.project_name}-vpc"
+    Name = "${var.project_name}-vpc"
   }
 }
 
 # Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-
+  
   tags = {
-    Name = "`${var.project_name}-igw"
+    Name = "${var.project_name}-igw"
   }
 }
 
@@ -29,23 +29,23 @@ resource "aws_subnet" "public" {
   cidr_block              = "10.0.1.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
-
+  
   tags = {
-    Name = "`${var.project_name}-public-subnet"
+    Name = "${var.project_name}-public-subnet"
   }
 }
 
 # Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
-
+  
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-
+  
   tags = {
-    Name = "`${var.project_name}-public-rt"
+    Name = "${var.project_name}-public-rt"
   }
 }
 
@@ -54,39 +54,58 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# INTENTIONAL VULNERABILITY 1: Overly permissive security group
+# SECURED: Properly configured security group
 resource "aws_security_group" "app_sg" {
-  name        = "`${var.project_name}-sg"
-  description = "Security group for application"
+  name        = "${var.project_name}-sg"
+  description = "Security group for application with restricted access"
   vpc_id      = aws_vpc.main.id
-
-  # VULNERABILITY: SSH open to the world
+  
+  # SSH restricted to admin IP only
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # INSECURE!
-    description = "SSH from anywhere"
+    cidr_blocks = [var.admin_ip]
+    description = "SSH from admin IP only"
   }
-
-  # VULNERABILITY: All ports open
+  
+  # HTTP access
   ingress {
-    from_port   = 0
-    to_port     = 65535
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # INSECURE!
-    description = "All TCP ports open"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP access"
   }
-
+  
+  # HTTPS access
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS access"
+  }
+  
+  # Application port (restricted to VPC)
+  ingress {
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Backend API - VPC only"
+  }
+  
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
   }
-
+  
   tags = {
-    Name = "`${var.project_name}-sg"
+    Name = "${var.project_name}-sg"
   }
 }
 
@@ -94,34 +113,41 @@ resource "aws_security_group" "app_sg" {
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
-
+  
   filter {
     name   = "name"
     values = ["al2023-ami-*-x86_64"]
   }
-
+  
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
 }
 
-# INTENTIONAL VULNERABILITY 2: Unencrypted EBS volume
+# SECURED: EC2 instance with encryption and IMDSv2
 resource "aws_instance" "app_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
   subnet_id     = aws_subnet.public.id
-
+  
   vpc_security_group_ids = [aws_security_group.app_sg.id]
-
-  # VULNERABILITY: Unencrypted root volume
+  
+  # FIXED: Encrypted root volume
   root_block_device {
     volume_size           = 20
     volume_type           = "gp3"
-    encrypted             = false # INSECURE!
+    encrypted             = true
     delete_on_termination = true
   }
-
+  
+  # FIXED: IMDSv2 enforced
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+  
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
@@ -131,32 +157,43 @@ resource "aws_instance" "app_server" {
               usermod -aG docker ec2-user
               
               # Install Docker Compose
-              curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-`$(uname -s)-`$(uname -m)" -o /usr/local/bin/docker-compose
+              curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
               chmod +x /usr/local/bin/docker-compose
               EOF
-
+  
   tags = {
-    Name = "`${var.project_name}-instance"
+    Name = "${var.project_name}-instance"
   }
 }
 
-# VULNERABILITY 3: S3 bucket without encryption (additional vulnerability)
+# SECURED: S3 bucket with encryption
 resource "aws_s3_bucket" "app_bucket" {
-  bucket = "`${var.project_name}-bucket-`${random_id.bucket_suffix.hex}"
-
+  bucket = "${var.project_name}-bucket-${random_id.bucket_suffix.hex}"
+  
   tags = {
-    Name = "`${var.project_name}-bucket"
+    Name = "${var.project_name}-bucket"
   }
 }
 
-# VULNERABILITY: Public access not blocked
+# Enable S3 encryption
+resource "aws_s3_bucket_server_side_encryption_configuration" "app_bucket" {
+  bucket = aws_s3_bucket.app_bucket.id
+  
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# FIXED: Block all public access
 resource "aws_s3_bucket_public_access_block" "app_bucket" {
   bucket = aws_s3_bucket.app_bucket.id
 
-  block_public_acls       = false # INSECURE!
-  block_public_policy     = false # INSECURE!
-  ignore_public_acls      = false # INSECURE!
-  restrict_public_buckets = false # INSECURE!
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 resource "random_id" "bucket_suffix" {

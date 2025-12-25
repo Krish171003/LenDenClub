@@ -19,5 +19,5 @@ variable "instance_type" {
 variable "admin_ip" {
   description = "Admin IP address for SSH access (format: x.x.x.x/32)"
   type        = string
-  default     = "0.0.0.0/0" # Will be fixed later
+  default     = "152.58.2.223/32" # Will be fixed later
 }
