@@ -1,0 +1,114 @@
+pipeline {
+    agent any
+    
+    environment {
+        TERRAFORM_VERSION = '1.6.0'
+        TRIVY_VERSION = '0.48.0'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code from repository...'
+                checkout scm
+            }
+        }
+        
+        stage('Setup Tools') {
+            steps {
+                script {
+                    sh '''
+                        # Install Terraform
+                        if ! command -v terraform &> /dev/null; then
+                            wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                            unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+                            sudo mv terraform /usr/local/bin/
+                        fi
+                        
+                        # Install Trivy
+                        if ! command -v trivy &> /dev/null; then
+                            wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+                            tar zxvf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+                            sudo mv trivy /usr/local/bin/
+                        fi
+                    '''
+                }
+            }
+        }
+        
+        stage('Infrastructure Security Scan') {
+            steps {
+                script {
+                    echo '========================================='
+                    echo 'Running Trivy Security Scan on Terraform'
+                    echo '========================================='
+                    
+                    def scanResult = sh(
+                        script: 'trivy config --severity HIGH,CRITICAL --exit-code 1 terraform/',
+                        returnStatus: true
+                    )
+                    
+                    if (scanResult != 0) {
+                        echo '⚠️  SECURITY VULNERABILITIES DETECTED!'
+                        echo 'Please review the report above and fix the issues.'
+                        echo '========================================='
+                        
+                        // Generate detailed report
+                        sh 'trivy config --format json --output trivy-report.json terraform/'
+                        sh 'trivy config --severity HIGH,CRITICAL terraform/ | tee security-scan-report.txt'
+                        
+                        archiveArtifacts artifacts: 'trivy-report.json,security-scan-report.txt'
+                        
+                        error('Security scan failed! Fix vulnerabilities before proceeding.')
+                    } else {
+                        echo '✅ Security scan passed!'
+                    }
+                }
+            }
+        }
+        
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform init'
+                }
+            }
+        }
+        
+        stage('Terraform Plan') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform plan -out=tfplan'
+                    sh 'terraform show -no-color tfplan > ../terraform-plan.txt'
+                    archiveArtifacts artifacts: '../terraform-plan.txt'
+                }
+            }
+        }
+        
+        stage('Approval') {
+            steps {
+                input message: 'Approve Terraform Apply?', ok: 'Deploy'
+            }
+        }
+        
+        stage('Terraform Apply') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform apply -auto-approve tfplan'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed! Check logs for details.'
+        }
+    }
+}

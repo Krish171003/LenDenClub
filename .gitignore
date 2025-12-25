@@ -1,0 +1,28 @@
+# Node modules
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+*.env
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.swp
