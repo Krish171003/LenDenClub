@@ -24,20 +24,13 @@ pipeline {
             echo "Stage 2: Running Trivy Security Scan on Terraform"
             echo "========================================="
             dir('terraform') {
-                // Run security scan but exclude acceptable web server risks
+                // Run security scan with documented exceptions in .trivyignore
                 def scanResult = sh(
-                    script: '''
-                        trivy config \
-                          --severity HIGH,CRITICAL \
-                          --exit-code 1 \
-                          --skip-policy-update \
-                          --policy ./trivy-policy.rego \
-                          .
-                    ''',
+                    script: 'trivy config --severity HIGH,CRITICAL --exit-code 1 .',
                     returnStatus: true
                 )
                 
-                // Generate reports
+                // Generate reports regardless of scan result
                 sh 'trivy config --format json --output trivy-report.json .'
                 sh 'trivy config --severity HIGH,CRITICAL . | tee security-scan-report.txt'
                 
@@ -46,7 +39,8 @@ pipeline {
                 
                 echo "========================================="
                 if (scanResult == 0) {
-                    echo "✅ Security scan passed! No critical vulnerabilities found"
+                    echo "✅ Security scan passed!"
+                    echo "All critical vulnerabilities have been addressed or documented."
                 } else {
                     echo "⚠️  SECURITY VULNERABILITIES DETECTED!"
                     echo "========================================="
@@ -63,6 +57,7 @@ pipeline {
         }
     }
 }
+
 
         
         stage('Terraform Init') {

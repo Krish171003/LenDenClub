@@ -1,0 +1,73 @@
+# ===========================================
+# Trivy Security Scan Exceptions
+# DevOps Assignment - LenDenClub Project
+# ===========================================
+#
+# The following security checks are intentionally ignored
+# as they are REQUIRED for a public-facing web application.
+#
+# Date: 2025-12-25
+# Reviewed by: Krish (DevOps Engineer)
+# ===========================================
+
+# ACCEPTABLE: Egress to public internet (0.0.0.0/0)
+# Reason: EC2 needs to download packages, security updates, and connect to external services
+# Risk Level: LOW for outbound traffic from trusted instances
+AVD-AWS-0104
+
+# ACCEPTABLE: HTTP (80) and HTTPS (443) ingress from public internet
+# Reason: This is a PUBLIC web application that must be accessible globally
+# Risk Level: NONE - This is the intended functionality
+# Ports: Only 80 and 443 are open (SSH is restricted to admin IP)
+AVD-AWS-0107
+
+# ACCEPTABLE: S3 bucket using AWS-managed keys (AES256) instead of customer-managed KMS
+# Reason: AES256 provides sufficient encryption for this use case
+# Risk Level: LOW - Data is still encrypted at rest
+# Note: Customer-managed keys add complexity without significant security benefit here
+AVD-AWS-0132
+
+# ACCEPTABLE: Public subnet auto-assigns public IP addresses
+# Reason: EC2 instance MUST have a public IP to be accessible as a web server
+# Risk Level: NONE - This is required for the application architecture
+AVD-AWS-0164
+
+# ===========================================
+# End of exceptions
+# ===========================================# ===========================================
+# Trivy Security Scan Exceptions
+# DevOps Assignment - LenDenClub Project
+# ===========================================
+#
+# The following security checks are intentionally ignored
+# as they are REQUIRED for a public-facing web application.
+#
+# Date: 2025-12-25
+# Reviewed by: Krish (DevOps Engineer)
+# ===========================================
+
+# ACCEPTABLE: Egress to public internet (0.0.0.0/0)
+# Reason: EC2 needs to download packages, security updates, and connect to external services
+# Risk Level: LOW for outbound traffic from trusted instances
+AVD-AWS-0104
+
+# ACCEPTABLE: HTTP (80) and HTTPS (443) ingress from public internet
+# Reason: This is a PUBLIC web application that must be accessible globally
+# Risk Level: NONE - This is the intended functionality
+# Ports: Only 80 and 443 are open (SSH is restricted to admin IP)
+AVD-AWS-0107
+
+# ACCEPTABLE: S3 bucket using AWS-managed keys (AES256) instead of customer-managed KMS
+# Reason: AES256 provides sufficient encryption for this use case
+# Risk Level: LOW - Data is still encrypted at rest
+# Note: Customer-managed keys add complexity without significant security benefit here
+AVD-AWS-0132
+
+# ACCEPTABLE: Public subnet auto-assigns public IP addresses
+# Reason: EC2 instance MUST have a public IP to be accessible as a web server
+# Risk Level: NONE - This is required for the application architecture
+AVD-AWS-0164
+
+# ===========================================
+# End of exceptions
+# ===========================================
